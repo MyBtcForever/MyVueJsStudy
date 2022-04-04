@@ -1,0 +1,152 @@
+With Options API, we use the data option to declare reactive state of a component. The option value should be a function that returns an object. Vue will call the function when creating a new component instance, and wrap the returned object in its reactivity system. Any top-level properties of this object are proxied on the component instance (this in methods and lifecycle hooks):
+
+export default {
+  data() {
+    return {
+      count: 1
+    }
+  },
+
+  // `mounted` is a lifecycle hook which we will explain later
+  mounted() {
+    // `this` refers to the component instance.
+    console.log(this.count) // => 1
+
+    // data can be mutated as well
+    this.count = 2
+  }
+}
+Try it in the Playground
+
+These instance properties are only added when the instance is first created, so you need to ensure they are all present in the object returned by the data function. Where necessary, use null, undefined or some other placeholder value for properties where the desired value isn't yet available.
+
+It is possible to add a new property directly to this without including it in data. However, properties added this way will not be able to trigger reactive updates.
+
+Vue uses a $ prefix when exposing its own built-in APIs via the component instance. It also reserves the prefix _ for internal properties. You should avoid using names for top-level data properties that start with either of these characters.
+
+Reactive Proxy vs. Original#
+In Vue 3, data is made reactive by leveraging JavaScript Proxies. Users coming from Vue 2 should be aware of the following edge case:
+
+export default {
+  data() {
+    return {
+      someObject: {}
+    }
+  },
+  mounted() {
+    const newObject = {}
+    this.someObject = newObject
+
+    console.log(newObject === this.someObject) // false
+  }
+}
+When you access this.someObject after assigning it, the value is a reactive proxy of the original newObject. Unlike in Vue 2, the original newObject is left intact and will not be made reactive: make sure to always access reactive state as a property of this.
+
+Declaring Methods#
+Watch a free video lesson on Vue School
+To add methods to a component instance we use the methods option. This should be an object containing the desired methods:
+
+export default {
+  data() {
+    return {
+      count: 0
+    }
+  },
+  methods: {
+    increment() {
+      this.count++
+    }
+  },
+  mounted() {
+    // methods can be called in lifecycle hooks, or other methods!
+    this.increment()
+  }
+}
+Vue automatically binds the this value for methods so that it always refers to the component instance. This ensures that a method retains the correct this value if it's used as an event listener or callback. You should avoid using arrow functions when defining methods, as that prevents Vue from binding the appropriate this value:
+
+export default {
+  methods: {
+    increment: () => {
+      // BAD: no `this` access here!
+    }
+  }
+}
+Just like all other properties of the component instance, the methods are accessible from within the component's template. Inside a template they are most commonly used as event listeners:
+
+<button @click="increment">{{ count }}</button>
+Try it in the Playground
+
+In the example above, the method increment will be called when the <button> is clicked.
+
+DOM Update Timing#
+When you mutate reactive state, the DOM is updated automatically. However, it should be noted that the DOM updates are not applied synchronously. Instead, Vue buffers them until the "next tick" in the update cycle to ensure that each component needs to update only once no matter how many state changes you have made.
+
+To wait for the DOM update to complete after a state change, you can use the nextTick() global API:
+
+import { nextTick } from 'vue'
+
+export default {
+  methods: {
+    increment() {
+      this.count++
+      nextTick(() => {
+        // access updated DOM
+      })
+    }
+  }
+}
+Deep Reactivity#
+In Vue, state is deeply reactive by default. This means you can expect changes to be detected even when you mutate nested objects or arrays:
+
+export default {
+  data() {
+    return {
+      obj: {
+        nested: { count: 0 },
+        arr: ['foo', 'bar']
+      }
+    }
+  },
+  methods: {
+    mutateDeeply() {
+      // these will work as expected.
+      this.obj.nested.count++
+      this.obj.arr.push('baz')
+    }
+  }
+}
+It is also possible to explicitly create shallow reactive objects where the reactivity is only tracked at the root-level, however they are typically only needed in advanced use cases.
+
+Stateful Methods#
+In some cases, we may need to dynamically create a method function, for example creating a debounced event handler:
+
+import { debounce } from 'lodash-es'
+
+export default {
+  methods: {
+    // Debouncing with Lodash
+    click: debounce(function () {
+      // ... respond to click ...
+    }, 500)
+  }
+}
+However, this approach is problematic for components that are reused because a debounced function is stateful: it maintains some internal state on the elapsed time. If multiple component instances share the same debounced function, they will interfere with one another.
+
+To keep each component instance's debounced function independent of the others, we can create the debounced version in the created lifecycle hook:
+
+export default {
+  created() {
+    // each instance now has its own copy of debounced handler
+    this.debouncedClick = _.debounce(this.click, 500)
+  },
+  unmounted() {
+    // also a good idea to cancel the timer
+    // when the component is removed
+    this.debouncedClick.cancel()
+  },
+  methods: {
+    click() {
+      // ... respond to click ...
+    }
+  }
+}
